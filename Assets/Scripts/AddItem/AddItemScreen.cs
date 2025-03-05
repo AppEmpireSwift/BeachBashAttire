@@ -34,9 +34,14 @@ namespace AddItem
         private Vector3[] _originalPositions;
         private Sequence _showSequence;
         private Sequence _hideSequence;
+        private ItemPlane _itemToEdit;
+        private bool _isEditMode;
 
         public event Action<ItemData> ItemDataCreated;
+        public event Action<ItemPlane> ItemDataUpdated;
         public event Action BackButtonClicked;
+        public event Action BackFromEditButtonClicked;
+        public event Action DataEdited;
 
         private void Awake()
         {
@@ -55,7 +60,8 @@ namespace AddItem
 
         private void Start()
         {
-            Disable();
+            _screenVisabilityHandler.DisableScreen();
+            ResetScreen();
         }
 
         private void OnEnable()
@@ -94,6 +100,40 @@ namespace AddItem
 
         public void Enable()
         {
+            _isEditMode = false;
+            _itemToEdit = null;
+
+            _screenVisabilityHandler.EnableScreen();
+            AnimateScreenIn();
+            UpdateSaveButtonState();
+        }
+
+        public void EnableEditMode(ItemPlane itemData)
+        {
+            if (itemData == null)
+            {
+                Debug.LogError("Cannot edit null ItemData");
+                return;
+            }
+
+            _isEditMode = true;
+            _itemToEdit = itemData;
+
+            _sectionNameInput.text = itemData.ItemData.SectionName;
+            _categoryInput.text = itemData.ItemData.CategoryName;
+            _timeOfDayInput.text = itemData.ItemData.TimeOfDay;
+
+            DisableAllPlanes();
+
+            for (int i = 0; i < itemData.ItemData.WearDatas.Count; i++)
+            {
+                if (i < _wearsPlanes.Count)
+                {
+                    _wearsPlanes[i].gameObject.SetActive(true);
+                    _wearsPlanes[i].Enable(itemData.ItemData.WearDatas[i]);
+                }
+            }
+
             _screenVisabilityHandler.EnableScreen();
             AnimateScreenIn();
             UpdateSaveButtonState();
@@ -221,6 +261,8 @@ namespace AddItem
             _categoryInput.text = string.Empty;
             _timeOfDayInput.text = string.Empty;
             DisableAllPlanes();
+            _isEditMode = false;
+            _itemToEdit = null;
         }
 
         private bool GetSaveButtonStatus()
@@ -259,7 +301,18 @@ namespace AddItem
                 }
 
                 var data = new ItemData(_sectionNameInput.text, _categoryInput.text, _timeOfDayInput.text, wearDatas);
-                ItemDataCreated?.Invoke(data);
+
+                if (_isEditMode && _itemToEdit != null)
+                {
+                    _itemToEdit.Enable(data);
+                    ItemDataUpdated?.Invoke(_itemToEdit);
+                    DataEdited?.Invoke();
+                }
+                else
+                {
+                    ItemDataCreated?.Invoke(data);
+                }
+
                 Disable();
             });
         }
@@ -268,7 +321,7 @@ namespace AddItem
         {
             _addWearButton.transform.DOPunchScale(Vector3.one * 0.2f, 0.2f, 3, 0.5f).OnComplete(() =>
             {
-                var availablePlane = _wearsPlanes.FirstOrDefault(plane => !plane.IsActive);
+                var availablePlane = _wearsPlanes.FirstOrDefault(plane => !plane.IsActive && plane.WearData == null);
 
                 if (availablePlane != null)
                 {
@@ -298,7 +351,15 @@ namespace AddItem
 
         private void OnBackButtonClicked()
         {
-            BackButtonClicked?.Invoke();
+            if (_isEditMode)
+            {
+                BackFromEditButtonClicked?.Invoke();
+            }
+            else
+            {
+                BackButtonClicked?.Invoke();
+            }
+
             Disable();
         }
     }

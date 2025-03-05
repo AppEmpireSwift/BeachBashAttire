@@ -15,6 +15,7 @@ namespace WearsItems
         public event Action InputedData;
 
         public bool IsActive { get; private set; }
+        public WearData WearData { get; private set; }
 
         private void OnEnable()
         {
@@ -37,8 +38,12 @@ namespace WearsItems
 
         public void Enable(WearData data)
         {
-            if (data == null)
-                throw new ArgumentNullException(nameof(data));
+            WearData = data ?? throw new ArgumentNullException(nameof(data));
+
+            ResetPlane();
+
+            IsActive = true;
+            gameObject.SetActive(IsActive);
 
             _selectionNameInput.text = data.Name;
             _materialsNameInput.text = data.Materials;
@@ -55,7 +60,7 @@ namespace WearsItems
                 _photosController.GetPhoto() == null)
                 return null;
 
-            return new WearData(_selectionNameInput.name, _materialsNameInput.text,
+            return new WearData(_selectionNameInput.text, _materialsNameInput.text,
                 _photosController.GetPhoto());
         }
 

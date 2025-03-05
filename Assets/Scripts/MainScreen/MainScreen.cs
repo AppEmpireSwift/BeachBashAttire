@@ -6,6 +6,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using WearsItems;
 using DG.Tweening;
+using OpenItem;
+using SaveSystem;
 
 namespace MainScreen
 {
@@ -18,6 +20,7 @@ namespace MainScreen
         [SerializeField] private Button _settingsButton;
         [SerializeField] private List<ItemPlane> _itemPlanes;
         [SerializeField] private AddItemScreen _addItemScreen;
+        [SerializeField] private OpenItemScreen _openItemScreen;
 
         [Header("Animation Settings")] [SerializeField]
         private float _animationDuration = 0.3f;
@@ -26,6 +29,7 @@ namespace MainScreen
 
         private CanvasGroup _canvasGroup;
         private ScreenVisabilityHandler _screenVisabilityHandler;
+        private ItemDataSaver _itemDataSaver;
 
         public event Action<ItemPlane> PlaneClicked;
 
@@ -34,14 +38,19 @@ namespace MainScreen
             _canvasGroup = GetComponent<CanvasGroup>();
             _screenVisabilityHandler = GetComponent<ScreenVisabilityHandler>();
             SetupButtonAnimations();
+            _itemDataSaver = new ItemDataSaver();
         }
 
         private void OnEnable()
         {
             _addItemScreen.ItemDataCreated += EnableItemPlane;
             _addItemScreen.BackButtonClicked += EnableScreen;
+            _addItemScreen.DataEdited += SaveItemPlanes;
             _createButton.onClick.AddListener(AddItemClicked);
             _addButton.onClick.AddListener(AddItemClicked);
+
+            _openItemScreen.BackClicked += EnableScreen;
+            _openItemScreen.DeleteClicked += DeletePlane;
 
             foreach (ItemPlane itemPlane in _itemPlanes)
             {
@@ -53,8 +62,12 @@ namespace MainScreen
         {
             _addItemScreen.ItemDataCreated -= EnableItemPlane;
             _addItemScreen.BackButtonClicked -= EnableScreen;
+            _addItemScreen.DataEdited -= SaveItemPlanes;
             _createButton.onClick.RemoveListener(AddItemClicked);
             _addButton.onClick.RemoveListener(AddItemClicked);
+
+            _openItemScreen.BackClicked -= EnableScreen;
+            _openItemScreen.DeleteClicked -= DeletePlane;
 
             foreach (ItemPlane itemPlane in _itemPlanes)
             {
@@ -65,6 +78,24 @@ namespace MainScreen
         private void Start()
         {
             DisableAllPlanes();
+            LoadItemPlanes();
+        }
+
+        public void EnableScreen()
+        {
+            _screenVisabilityHandler.EnableScreen();
+            _canvasGroup
+                .DOFade(1f, _animationDuration)
+                .From(0f)
+                .SetEase(_animationEase);
+        }
+
+        public void DisableScreen()
+        {
+            _canvasGroup
+                .DOFade(0f, _animationDuration)
+                .SetEase(_animationEase)
+                .OnComplete(() => { _screenVisabilityHandler.DisableScreen(); });
         }
 
         private void SetupButtonAnimations()
@@ -102,12 +133,15 @@ namespace MainScreen
                 .SetEase(_animationEase);
 
             ToggleObjects();
+            SaveItemPlanes();
         }
 
         private void DeletePlane(ItemPlane plane)
         {
             if (plane == null)
                 throw new ArgumentNullException(nameof(plane));
+
+            EnableScreen();
 
             plane.gameObject.transform
                 .DOScale(Vector3.zero, _animationDuration)
@@ -116,6 +150,7 @@ namespace MainScreen
                 {
                     plane.Disable();
                     ToggleObjects();
+                    SaveItemPlanes();
                 });
         }
 
@@ -146,23 +181,6 @@ namespace MainScreen
                 .SetEase(_animationEase);
         }
 
-        public void EnableScreen()
-        {
-            _screenVisabilityHandler.EnableScreen();
-            _canvasGroup
-                .DOFade(1f, _animationDuration)
-                .From(0f)
-                .SetEase(_animationEase);
-        }
-
-        public void DisableScreen()
-        {
-            _canvasGroup
-                .DOFade(0f, _animationDuration)
-                .SetEase(_animationEase)
-                .OnComplete(() => { _screenVisabilityHandler.DisableScreen(); });
-        }
-
         private void OnPlaneClicked(ItemPlane plane)
         {
             plane.gameObject.transform
@@ -170,12 +188,64 @@ namespace MainScreen
                 .SetEase(_animationEase);
 
             PlaneClicked?.Invoke(plane);
+            _openItemScreen.EnableScreen(plane);
+            DisableScreen();
         }
 
         private void AddItemClicked()
         {
             _addItemScreen.Enable();
             DisableScreen();
+        }
+
+        private void SaveItemPlanes()
+        {
+            try
+            {
+                List<ItemData> activeDatas = _itemPlanes
+                    .Where(plane => plane.IsActive)
+                    .Select(plane => plane.ItemData)
+                    .ToList();
+
+                _itemDataSaver.SaveData(activeDatas);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e.Message);
+            }
+        }
+
+        private void LoadItemPlanes()
+        {
+            try
+            {
+                List<ItemData> loadedDatas = _itemDataSaver.LoadData();
+
+                if (loadedDatas == null || loadedDatas.Count == 0)
+                {
+                    return;
+                }
+
+                for (int i = 0; i < loadedDatas.Count; i++)
+                {
+                    if (i >= _itemPlanes.Count)
+                    {
+                        break;
+                    }
+
+                    _itemPlanes[i].Enable(loadedDatas[i]);
+                    _itemPlanes[i].gameObject.transform
+                        .DOScale(Vector3.one, _animationDuration)
+                        .From(Vector3.zero)
+                        .SetEase(_animationEase);
+                }
+
+                ToggleObjects();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e.Message);
+            }
         }
     }
 }
